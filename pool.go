@@ -1,37 +1,47 @@
-package main
+package gopool
 
 import (
 	"sync"
 )
 
-type WorkerFunc func(data interface{}) int
+// WorkerFunc to be pushed into the workChan of Pool
+type WorkerFunc func(data interface{}) interface{}
+
+// Pool structure
 type Pool struct {
-	wg       *sync.WaitGroup
-	running  *bool
-	workChan chan *Work
+	noOfWorkers int
+	wg          *sync.WaitGroup
+	running     *bool
+	workChan    chan *Worker
 }
 
-func NewPool(numberOfWorkers int) *Pool {
+// NewPool creates a Pool
+func NewPool(noOfWorkers int) *Pool {
 	var wg sync.WaitGroup
 	running := true
 
-	workChan := make(chan *Work, numberOfWorkers*10)
+	workChan := make(chan *Worker, noOfWorkers*10)
 
 	p := &Pool{
-		wg:       &wg,
-		running:  &running,
-		workChan: workChan,
+		noOfWorkers: noOfWorkers,
+		wg:          &wg,
+		running:     &running,
+		workChan:    workChan,
 	}
 
-	wg.Add(numberOfWorkers)
-	for i := 0; i < numberOfWorkers; i++ {
-		go p.startWorker(workChan)
-	}
+	p.init()
 
 	return p
 }
 
-func (p *Pool) startWorker(workChan chan *Work) {
+func (p *Pool) init() {
+	p.wg.Add(p.noOfWorkers)
+	for i := 0; i < p.noOfWorkers; i++ {
+		go p.startWorkers(p.workChan)
+	}
+}
+
+func (p *Pool) startWorkers(workChan chan *Worker) {
 	defer p.wg.Done()
 
 	for *p.running {
@@ -41,14 +51,20 @@ func (p *Pool) startWorker(workChan chan *Work) {
 		}
 	}
 }
+
+// Wait for the Pool
 func (p *Pool) Wait() {
 	p.wg.Wait()
 }
+
+// Terminate the Pool
 func (p *Pool) Terminate() {
 	*p.running = false
 	close(p.workChan)
 }
-func (p *Pool) Queue(fn WorkerFunc, val interface{}) *Work {
+
+// Queue a job into the Pool
+func (p *Pool) Queue(fn WorkerFunc, val interface{}) *Worker {
 	/*
 		t := reflect.TypeOf(MyFunction)
 		t.NumIn() // number of input variables
@@ -57,11 +73,11 @@ func (p *Pool) Queue(fn WorkerFunc, val interface{}) *Work {
 		t.Out(i)
 	*/
 	// t := reflect.TypeOf(fn)
-	valChan := make(chan interface{}, 1)
-	w := &Work{
-		fn:    fn,
-		Input: val,
-		Value: valChan,
+	res := make(chan interface{}, 1)
+	w := &Worker{
+		fn:     fn,
+		Input:  val,
+		result: res,
 	}
 	p.workChan <- w
 	return w
