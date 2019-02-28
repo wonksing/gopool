@@ -9,8 +9,8 @@ type WorkerFunc func(data interface{}) interface{}
 
 // Pool structure
 type Pool struct {
-	noOfWorkers int
-	wg          *sync.WaitGroup
+	noOfWorkers int             // number of workers to hold
+	wg          *sync.WaitGroup // to wait for the workers to finish
 	// running     *bool
 	workChan chan *Worker
 }
@@ -61,7 +61,7 @@ func (p *Pool) startWorkers() {
 	}
 }
 
-// Terminate the Pool
+// Terminate the pool and wait for all jobs have been completed
 func (p *Pool) Terminate() {
 	// *p.running = false
 	close(p.workChan)
@@ -113,7 +113,11 @@ func (w *Worker) Execute() {
 	}
 }
 
-// GetResult that retrieved the return value of fn WorkerFunc
+// GetResult is to get the return value of the job(WorkerFunc)
+// It is meant to be used only when QueueAndWait() function has been called.
 func (w *Worker) GetResult() interface{} {
-	return <-w.result
+	if w.wait {
+		return <-w.result
+	}
+	return nil
 }
