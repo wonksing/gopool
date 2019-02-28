@@ -2,79 +2,122 @@ package gopool_test
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/wonksing/gopool"
 )
 
-func testFun(data interface{}) interface{} {
+// func testFun(data interface{}) interface{} {
+// 	val := data.(int)
+// 	// fmt.Println(val)
+// 	if val == 0 {
+// 		time.Sleep(time.Second * 5)
+// 	}
+// 	time.Sleep(time.Second * 2)
+
+// 	fmt.Printf("testFun finished %v\n", val)
+// 	return val
+// }
+// func TestGoPool(t *testing.T) {
+// 	var numOfWorkers int
+// 	numOfWorkers = 50
+
+// 	p := gopool.NewPool(numOfWorkers)
+
+// 	var wg1 sync.WaitGroup
+
+// 	noOfJobs := 100
+// 	wg1.Add(noOfJobs)
+// 	for i := 0; i < noOfJobs; i++ {
+// 		go func(t int) {
+// 			w := p.QueueAndWait(testFun, t)
+// 			fmt.Printf("Return Value of 'testFun' is %v \n", w.GetResult())
+// 			wg1.Done()
+// 		}(i)
+// 		//time.Sleep(time.Millisecond * 5)
+// 	}
+// 	fmt.Println("sent all")
+// 	wg1.Wait()
+
+// 	p.Terminate()
+// 	p.Wait()
+
+// }
+
+var verifier chan int
+
+func testFunc(data interface{}) interface{} {
 	val := data.(int)
-	// fmt.Println(val)
-	if val == 0 {
-		time.Sleep(time.Second * 5)
+
+	if val == 0 || val == 2900 {
+		time.Sleep(time.Second * 2)
+		// verifier <- val
 	}
+	verifier <- val
+
 	return val
 }
-func TestGoPool(t *testing.T) {
+func TestGopool(t *testing.T) {
+
 	var numOfWorkers int
 	numOfWorkers = 50
 
 	p := gopool.NewPool(numOfWorkers)
 
-	var wg1 sync.WaitGroup
-
-	wg1.Add(10000)
-	for i := 0; i < 10000; i++ {
-		go func(t int) {
-			w := p.Queue(testFun, t)
-			val := w.GetResult()
-			fmt.Printf("Return Value of 'testFun' is %v \n", val)
-			wg1.Done()
-		}(i)
-		//time.Sleep(time.Millisecond * 5)
+	noOfJobs := 10098
+	verifier = make(chan int, noOfJobs+10)
+	for i := 0; i < noOfJobs; i++ {
+		p.Queue(testFunc, i)
 	}
-
-	wg1.Wait()
+	fmt.Println("Pushed all jobs")
 
 	p.Terminate()
-	p.Wait()
+	// time.Sleep(time.Second * 10)
+	fmt.Println("===============================================")
 
+	if noOfJobs != len(verifier) {
+		t.Error("error hehe")
+	} else {
+
+	}
 }
 
-// package main
+var verifierWithWait chan int
 
-// import (
-// 	"fmt"
-// 	"sync"
-// 	"time"
-// )
+func testFuncWithWait(data interface{}) interface{} {
+	val := data.(int)
 
-// func main() {
-// 	var numOfWorkers int
-// 	numOfWorkers = 50
+	if val == 0 || val == 609 {
+		time.Sleep(time.Second * 5)
+	}
 
-// 	p := NewPool(numOfWorkers)
+	// verifierWithWait <- val
+	return val
+}
+func TestGopoolWithWait(t *testing.T) {
 
-// 	var wg1 sync.WaitGroup
+	var numOfWorkers int
+	numOfWorkers = 50
 
-// 	wg1.Add(10000)
-// 	for i := 0; i < 10000; i++ {
-// 		go func(t int) {
-// 			if t == 0 {
-// 				fmt.Println("0")
-// 			}
-// 			w := p.Queue(testFun, t)
-// 			fmt.Printf("heyhey %v \n", <-w.Value)
-// 			close(w.Value)
-// 			wg1.Done()
-// 		}(i)
-// 		//time.Sleep(time.Millisecond * 5)
-// 	}
+	p := gopool.NewPool(numOfWorkers)
 
-// 	wg1.Wait()
+	noOfJobs := 5678
+	verifierWithWait = make(chan int, noOfJobs+10)
+	for i := 0; i < noOfJobs; i++ {
+		w := p.QueueAndWait(testFuncWithWait, i)
+		val := w.GetResult()
+		verifierWithWait <- val.(int)
+		// fmt.Printf("value is %v \n", val)
+	}
+	fmt.Println("Pushed all jobs")
 
-// 	p.Terminate()
-// 	p.Wait()
-// }
+	p.Terminate()
+	fmt.Println("===============================================")
+
+	if noOfJobs != len(verifierWithWait) {
+		t.Error("error hehe")
+	} else {
+
+	}
+}
