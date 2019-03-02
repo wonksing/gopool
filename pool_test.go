@@ -62,8 +62,9 @@ func TestGopool(t *testing.T) {
 
 	var numOfWorkers int
 	numOfWorkers = 50
+	numOfMaxTasks := 100
 
-	p := gopool.NewPool(numOfWorkers)
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks)
 
 	noOfJobs := 10098
 	verifier = make(chan int, noOfJobs+10)
@@ -72,7 +73,7 @@ func TestGopool(t *testing.T) {
 	}
 	fmt.Println("Pushed all jobs")
 
-	p.Terminate()
+	p.TerminateAndWait()
 	// time.Sleep(time.Second * 10)
 	fmt.Println("===============================================")
 
@@ -99,20 +100,20 @@ func TestGopoolWithWait(t *testing.T) {
 
 	var numOfWorkers int
 	numOfWorkers = 50
+	numOfMaxTasks := 100
 
-	p := gopool.NewPool(numOfWorkers)
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks)
 
 	noOfJobs := 5678
 	verifierWithWait = make(chan int, noOfJobs+10)
 	for i := 0; i < noOfJobs; i++ {
-		w := p.QueueAndWait(testFuncWithWait, i)
-		val := w.GetResult()
+		val := p.QueueAndWait(testFuncWithWait, i)
 		verifierWithWait <- val.(int)
 		// fmt.Printf("value is %v \n", val)
 	}
 	fmt.Println("Pushed all jobs")
 
-	p.Terminate()
+	p.TerminateAndWait()
 	fmt.Println("===============================================")
 
 	if noOfJobs != len(verifierWithWait) {

@@ -9,24 +9,26 @@ type WorkerFunc func(data interface{}) interface{}
 
 // Pool structure
 type Pool struct {
-	noOfWorkers int             // number of workers to hold
-	wg          *sync.WaitGroup // to wait for the workers to finish
+	noOfWorkers  int // number of workers to hold
+	noOfMaxTasks int
+	wg           *sync.WaitGroup // to wait for the workers to finish
 	// running     *bool
-	workChan chan *Worker
+	tasks chan *Task
 }
 
 // NewPool creates a Pool
-func NewPool(noOfWorkers int) *Pool {
+func NewPool(noOfWorkers int, noOfMaxTasks int) *Pool {
 	var wg sync.WaitGroup
 	// running := true
 
-	workChan := make(chan *Worker, noOfWorkers*10)
+	tasks := make(chan *Task, noOfMaxTasks)
 
 	p := &Pool{
-		noOfWorkers: noOfWorkers,
-		wg:          &wg,
+		noOfWorkers:  noOfWorkers,
+		noOfMaxTasks: noOfMaxTasks,
+		wg:           &wg,
 		// running:     &running,
-		workChan: workChan,
+		tasks: tasks,
 	}
 
 	p.init()
@@ -54,69 +56,69 @@ func (p *Pool) startWorkers() {
 	// it is a blocking operation.
 	// wait until received.
 	// break when the channel is closed.
-	for work := range p.workChan {
-		if work != nil {
-			work.Execute()
+	for task := range p.tasks {
+		if task != nil {
+			task.Execute()
 		}
 	}
 }
 
 // Terminate the pool and wait for all jobs have been completed
-func (p *Pool) Terminate() {
+func (p *Pool) TerminateAndWait() {
 	// *p.running = false
-	close(p.workChan)
+	close(p.tasks)
 	p.wg.Wait()
 }
 
 // Queue a job into the Pool
 func (p *Pool) Queue(fn WorkerFunc, val interface{}) {
-	w := NewWorker(fn, val, false)
-	p.workChan <- w
+	t := NewTask(fn, val, false)
+	p.tasks <- t
 }
 
 // QueueAndWait is to get the return value of the worker function.
 // It is meant to be used with GetResult() function.
-func (p *Pool) QueueAndWait(fn WorkerFunc, val interface{}) *Worker {
-	w := NewWorker(fn, val, true)
-	p.workChan <- w
-	return w
+func (p *Pool) QueueAndWait(fn WorkerFunc, val interface{}) interface{} {
+	w := NewTask(fn, val, true)
+	p.tasks <- w
+	return w.GetResult()
 }
 
-// Worker structure
-type Worker struct {
-	fn     WorkerFunc
-	Input  interface{}
-	result chan interface{}
-	wait   bool
+// Task struct
+type Task struct {
+	fn            WorkerFunc
+	param         interface{}
+	result        chan interface{}
+	needReturnVal bool
 }
 
-// NewWorker is to create a worker
-func NewWorker(fn WorkerFunc, input interface{}, wait bool) *Worker {
+// NewTask is to create a Task
+func NewTask(fn WorkerFunc, param interface{}, needReturnVal bool) *Task {
 	var res chan interface{}
-	if wait {
+	if needReturnVal {
 		res = make(chan interface{}, 1)
 	}
-	w := &Worker{
-		fn:     fn,
-		Input:  input,
-		result: res,
-		wait:   wait,
+	w := &Task{
+		fn:            fn,
+		param:         param,
+		result:        res,
+		needReturnVal: needReturnVal,
 	}
 	return w
 }
 
-// Start Worker
-func (w *Worker) Execute() {
-	val := w.fn(w.Input)
-	if w.wait {
+// Start Task
+func (w *Task) Execute() {
+	val := w.fn(w.param)
+	if w.needReturnVal {
 		w.result <- val
 	}
 }
 
 // GetResult is to get the return value of the job(WorkerFunc)
 // It is meant to be used only when QueueAndWait() function has been called.
-func (w *Worker) GetResult() interface{} {
-	if w.wait {
+func (w *Task) GetResult() interface{} {
+	if w.needReturnVal {
 		return <-w.result
 	}
 	return nil
