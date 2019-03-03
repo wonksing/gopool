@@ -2,6 +2,7 @@ package gopool_test
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -53,6 +54,8 @@ func testFunc(data interface{}) interface{} {
 	if val == 0 || val == 2900 {
 		time.Sleep(time.Second * 2)
 		// verifier <- val
+	} else if val == 10097 {
+		time.Sleep(time.Second * 3)
 	}
 	verifier <- val
 
@@ -64,7 +67,7 @@ func TestGopool(t *testing.T) {
 	numOfWorkers = 50
 	numOfMaxTasks := 100
 
-	p := gopool.NewPool(numOfWorkers, numOfMaxTasks)
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks, false)
 
 	noOfJobs := 10098
 	verifier = make(chan int, noOfJobs+10)
@@ -89,7 +92,7 @@ var verifierWithWait chan int
 func testFuncWithWait(data interface{}) interface{} {
 	val := data.(int)
 
-	if val == 0 || val == 609 {
+	if val == 0 || val == 609 || val == 5677 {
 		time.Sleep(time.Second * 5)
 	}
 
@@ -102,12 +105,16 @@ func TestGopoolWithWait(t *testing.T) {
 	numOfWorkers = 50
 	numOfMaxTasks := 100
 
-	p := gopool.NewPool(numOfWorkers, numOfMaxTasks)
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks, false)
 
 	noOfJobs := 5678
 	verifierWithWait = make(chan int, noOfJobs+10)
 	for i := 0; i < noOfJobs; i++ {
-		val := p.QueueAndWait(testFuncWithWait, i)
+		val, err := p.QueueAndWait(testFuncWithWait, i)
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
 		verifierWithWait <- val.(int)
 		// fmt.Printf("value is %v \n", val)
 	}
@@ -121,4 +128,49 @@ func TestGopoolWithWait(t *testing.T) {
 	} else {
 
 	}
+}
+
+type ReturnVal struct {
+	input  int
+	output int
+}
+
+func workerFunc(data interface{}) interface{} {
+	val := data.(int)
+	// fmt.Printf("Entered workerFunc %v\n", val)
+	var ret int
+	ret = val
+	// if ret == 0 {
+	r := rand.Intn(2)
+	time.Sleep(time.Second * time.Duration(r))
+	// }
+	return &ReturnVal{
+		input:  val,
+		output: ret * 3,
+	}
+}
+func TestGopoolWithResults(t *testing.T) {
+	// create a pool
+	numOfWorkers := 50
+	numOfMaxTasks := 100
+	useResChannel := true
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks, useResChannel)
+
+	// handle result
+	// when using result channel, p.Results must be received.
+	p.HandleResult(func(res interface{}) {
+		fmt.Printf("Return value is %v\n", res)
+	})
+
+	// push tasks into the channel
+	noOfTasks := 1098
+	for i := 0; i < noOfTasks; i++ {
+		p.Queue(workerFunc, i)
+	}
+	fmt.Println("Queued all tasks")
+
+	p.TerminateAndWait()
+	fmt.Println("Finished all tasks")
+
+	fmt.Println("Finished getting return values of tasks")
 }

@@ -1,6 +1,4 @@
 # gopool
-This is a pool with workers.
+This is a pool of goroutines. This project was first started to understand Go, especially channels and goroutines.
 
-Pool holds workers and workers call your function, a job.
-
-A channel is shared between the pool and worker, and workers by themselves.
+Gopool is implemented with a buffered channel of Task struct. Task takes your function and the functions’s parameter to its fields. Then the task is pulled by Workers that execute the typed function in the task.

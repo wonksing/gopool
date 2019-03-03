@@ -1,6 +1,7 @@
 package gopool
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -10,25 +11,32 @@ type WorkerFunc func(data interface{}) interface{}
 // Pool structure
 type Pool struct {
 	noOfWorkers  int // number of workers to hold
-	noOfMaxTasks int
+	maxNoOfTasks int
 	wg           *sync.WaitGroup // to wait for the workers to finish
-	// running     *bool
-	tasks chan *Task
+	tasks        chan *Task
+	Results      chan interface{}
+	wgResults    *sync.WaitGroup
 }
 
 // NewPool creates a Pool
-func NewPool(noOfWorkers int, noOfMaxTasks int) *Pool {
+func NewPool(noOfWorkers int, maxNoOfTasks int, useResChannel bool) *Pool {
 	var wg sync.WaitGroup
+	var wgResults sync.WaitGroup
 	// running := true
 
-	tasks := make(chan *Task, noOfMaxTasks)
+	tasks := make(chan *Task, maxNoOfTasks)
 
+	var results chan interface{}
+	if useResChannel {
+		results = make(chan interface{}, maxNoOfTasks)
+	}
 	p := &Pool{
 		noOfWorkers:  noOfWorkers,
-		noOfMaxTasks: noOfMaxTasks,
+		maxNoOfTasks: maxNoOfTasks,
 		wg:           &wg,
-		// running:     &running,
-		tasks: tasks,
+		tasks:        tasks,
+		Results:      results,
+		wgResults:    &wgResults,
 	}
 
 	p.init()
@@ -55,71 +63,82 @@ func (p *Pool) startWorkers() {
 
 	// it is a blocking operation.
 	// wait until received.
-	// break when the channel is closed.
+	// break when the channel is closed and empty.
 	for task := range p.tasks {
 		if task != nil {
-			task.Execute()
+			val := task.Execute()
+			if p.Results != nil {
+				p.Results <- val
+			}
 		}
 	}
 }
 
-// Terminate the pool and wait for all jobs have been completed
+// TerminateAndWait for workers to return
 func (p *Pool) TerminateAndWait() {
 	// *p.running = false
 	close(p.tasks)
 	p.wg.Wait()
+
+	close(p.Results)
+	p.wgResults.Wait()
 }
 
 // Queue a job into the Pool
-func (p *Pool) Queue(fn WorkerFunc, val interface{}) {
-	t := NewTask(fn, val, false)
+func (p *Pool) Queue(fn WorkerFunc, param interface{}) {
+	t := &Task{
+		fn:    fn,
+		Param: param,
+	}
 	p.tasks <- t
 }
 
 // QueueAndWait is to get the return value of the worker function.
 // It is meant to be used with GetResult() function.
-func (p *Pool) QueueAndWait(fn WorkerFunc, val interface{}) interface{} {
-	w := NewTask(fn, val, true)
-	p.tasks <- w
-	return w.GetResult()
+func (p *Pool) QueueAndWait(fn WorkerFunc, param interface{}) (interface{}, error) {
+	if p.Results != nil {
+		return nil, errors.New("cannot use with Reuslts channel")
+	}
+	t := NewTask(fn, param)
+	p.tasks <- t
+	return <-t.Result, nil
+}
+
+func (p *Pool) HandleResult(fn func(res interface{})) {
+	p.wgResults.Add(1)
+	go func() {
+		defer p.wgResults.Done()
+		for r := range p.Results {
+			fn(r)
+		}
+	}()
 }
 
 // Task struct
 type Task struct {
-	fn            WorkerFunc
-	param         interface{}
-	result        chan interface{}
-	needReturnVal bool
+	fn     WorkerFunc
+	Param  interface{}
+	Result chan interface{}
 }
 
 // NewTask is to create a Task
-func NewTask(fn WorkerFunc, param interface{}, needReturnVal bool) *Task {
-	var res chan interface{}
-	if needReturnVal {
-		res = make(chan interface{}, 1)
-	}
+func NewTask(fn WorkerFunc, param interface{}) *Task {
+	res := make(chan interface{}, 1)
+
 	w := &Task{
-		fn:            fn,
-		param:         param,
-		result:        res,
-		needReturnVal: needReturnVal,
+		fn:     fn,
+		Param:  param,
+		Result: res,
 	}
+
 	return w
 }
 
-// Start Task
-func (w *Task) Execute() {
-	val := w.fn(w.param)
-	if w.needReturnVal {
-		w.result <- val
+// Execute Task
+func (w *Task) Execute() interface{} {
+	val := w.fn(w.Param)
+	if w.Result != nil {
+		w.Result <- val
 	}
-}
-
-// GetResult is to get the return value of the job(WorkerFunc)
-// It is meant to be used only when QueueAndWait() function has been called.
-func (w *Task) GetResult() interface{} {
-	if w.needReturnVal {
-		return <-w.result
-	}
-	return nil
+	return val
 }
