@@ -104,6 +104,7 @@ func (p *Pool) QueueAndWait(fn WorkerFunc, param interface{}) (interface{}, erro
 	return <-t.Result, nil
 }
 
+// HandleResult is used to handle the return values of the queued functions
 func (p *Pool) HandleResult(fn func(res interface{})) {
 	p.wgResults.Add(1)
 	go func() {
