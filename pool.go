@@ -80,7 +80,9 @@ func (p *Pool) TerminateAndWait() {
 	close(p.tasks)
 	p.wg.Wait()
 
-	close(p.Results)
+	if p.Results != nil {
+		close(p.Results)
+	}
 	p.wgResults.Wait()
 }
 
