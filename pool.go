@@ -6,7 +6,7 @@ import (
 )
 
 // WorkerFunc to be pushed into the workChan of Pool
-type WorkerFunc func(data interface{}) interface{}
+type WorkerFunc func(params ...interface{}) interface{}
 
 // Pool structure
 type Pool struct {
@@ -19,23 +19,18 @@ type Pool struct {
 }
 
 // NewPool creates a Pool
-func NewPool(noOfWorkers int, maxNoOfTasks int, useResChannel bool) *Pool {
+func NewPool(noOfWorkers int, maxNoOfTasks int) *Pool {
 	var wg sync.WaitGroup
 	var wgResults sync.WaitGroup
 	// running := true
 
 	tasks := make(chan *Task, maxNoOfTasks)
 
-	var results chan interface{}
-	if useResChannel {
-		results = make(chan interface{}, maxNoOfTasks)
-	}
 	p := &Pool{
 		noOfWorkers:  noOfWorkers,
 		maxNoOfTasks: maxNoOfTasks,
 		wg:           &wg,
 		tasks:        tasks,
-		Results:      results,
 		wgResults:    &wgResults,
 	}
 
@@ -54,15 +49,8 @@ func (p *Pool) init() {
 func (p *Pool) startWorkers() {
 	defer p.wg.Done()
 
-	// for *p.running {
-	// 	work := <-workChan
-	// 	if work != nil {
-	// 		work.Execute()
-	// 	}
-	// }
-
 	// it is a blocking operation.
-	// wait until received.
+	// wait until a task is received.
 	// break when the channel is closed and empty.
 	for task := range p.tasks {
 		if task != nil {
@@ -72,6 +60,24 @@ func (p *Pool) startWorkers() {
 			}
 		}
 	}
+}
+
+// HandleResult is used to handle the return values of the queued functions
+func (p *Pool) HandleResult(fn func(res interface{})) error {
+	if p.Results != nil {
+		return errors.New("already handling")
+	}
+
+	p.Results = make(chan interface{}, p.maxNoOfTasks)
+	p.wgResults.Add(1)
+	go func() {
+		defer p.wgResults.Done()
+		for r := range p.Results {
+			fn(r)
+		}
+	}()
+
+	return nil
 }
 
 // TerminateAndWait for workers to return
@@ -87,59 +93,39 @@ func (p *Pool) TerminateAndWait() {
 }
 
 // Queue a job into the Pool
-func (p *Pool) Queue(fn WorkerFunc, param interface{}) {
+func (p *Pool) Queue(fn WorkerFunc, fnParams ...interface{}) {
 	t := &Task{
-		fn:    fn,
-		Param: param,
+		fn:     fn,
+		Params: fnParams,
 	}
 	p.tasks <- t
 }
 
-// QueueAndWait is to get the return value of the worker function.
-// It is meant to be used with GetResult() function.
-func (p *Pool) QueueAndWait(fn WorkerFunc, param interface{}) (interface{}, error) {
+// QueueAndWait blocks and return the result of fn
+func (p *Pool) QueueAndWait(fn WorkerFunc, fnParams ...interface{}) (interface{}, error) {
 	if p.Results != nil {
-		return nil, errors.New("cannot use with Reuslts channel")
+		return nil, errors.New("cannot be used with HandleResult")
 	}
-	t := NewTask(fn, param)
+	// t := NewTask(fn, fnParams)
+	t := &Task{
+		fn:     fn,
+		Params: fnParams,
+		Result: make(chan interface{}, 1),
+	}
 	p.tasks <- t
 	return <-t.Result, nil
-}
-
-// HandleResult is used to handle the return values of the queued functions
-func (p *Pool) HandleResult(fn func(res interface{})) {
-	p.wgResults.Add(1)
-	go func() {
-		defer p.wgResults.Done()
-		for r := range p.Results {
-			fn(r)
-		}
-	}()
 }
 
 // Task struct
 type Task struct {
 	fn     WorkerFunc
-	Param  interface{}
+	Params []interface{}
 	Result chan interface{}
-}
-
-// NewTask is to create a Task
-func NewTask(fn WorkerFunc, param interface{}) *Task {
-	res := make(chan interface{}, 1)
-
-	w := &Task{
-		fn:     fn,
-		Param:  param,
-		Result: res,
-	}
-
-	return w
 }
 
 // Execute Task
 func (w *Task) Execute() interface{} {
-	val := w.fn(w.Param)
+	val := w.fn(w.Params...)
 	if w.Result != nil {
 		w.Result <- val
 	}

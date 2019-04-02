@@ -2,54 +2,16 @@ package gopool_test
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/wonksing/gopool"
 )
 
-// func testFun(data interface{}) interface{} {
-// 	val := data.(int)
-// 	// fmt.Println(val)
-// 	if val == 0 {
-// 		time.Sleep(time.Second * 5)
-// 	}
-// 	time.Sleep(time.Second * 2)
-
-// 	fmt.Printf("testFun finished %v\n", val)
-// 	return val
-// }
-// func TestGoPool(t *testing.T) {
-// 	var numOfWorkers int
-// 	numOfWorkers = 50
-
-// 	p := gopool.NewPool(numOfWorkers)
-
-// 	var wg1 sync.WaitGroup
-
-// 	noOfJobs := 100
-// 	wg1.Add(noOfJobs)
-// 	for i := 0; i < noOfJobs; i++ {
-// 		go func(t int) {
-// 			w := p.QueueAndWait(testFun, t)
-// 			fmt.Printf("Return Value of 'testFun' is %v \n", w.GetResult())
-// 			wg1.Done()
-// 		}(i)
-// 		//time.Sleep(time.Millisecond * 5)
-// 	}
-// 	fmt.Println("sent all")
-// 	wg1.Wait()
-
-// 	p.Terminate()
-// 	p.Wait()
-
-// }
-
 var verifier chan int
 
-func testFunc(data interface{}) interface{} {
-	val := data.(int)
+func testFunc(data ...interface{}) interface{} {
+	val := data[0].(int)
 
 	if val == 0 || val == 2900 {
 		time.Sleep(time.Second * 2)
@@ -67,7 +29,7 @@ func TestGopool(t *testing.T) {
 	numOfWorkers = 50
 	numOfMaxTasks := 100
 
-	p := gopool.NewPool(numOfWorkers, numOfMaxTasks, false)
+	p := gopool.NewPool(numOfWorkers, numOfMaxTasks)
 
 	noOfJobs := 10098
 	verifier = make(chan int, noOfJobs+10)
@@ -87,6 +49,7 @@ func TestGopool(t *testing.T) {
 	}
 }
 
+/*
 var verifierWithWait chan int
 
 func testFuncWithWait(data interface{}) interface{} {
@@ -174,3 +137,4 @@ func TestGopoolWithResults(t *testing.T) {
 
 	fmt.Println("Finished getting return values of tasks")
 }
+*/
